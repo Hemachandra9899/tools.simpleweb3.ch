@@ -1,7 +1,11 @@
 import React, { useState, lazy, Suspense, useEffect } from 'react';
 import { useSelector } from 'react-redux';
-import { parseEther } from 'viem';
-import { useSendTransaction, usePrepareTransactionRequest } from 'wagmi';
+import { parseUnits } from 'viem';
+import {
+  useSendTransaction,
+  usePrepareTransactionRequest,
+  useEstimateFeesPerGas,
+} from 'wagmi';
 
 import ValidateButton from '../components/buttons/ValidateButton';
 import SendToNetworkButton from '../components/buttons/SendToNetworkButton';
@@ -11,8 +15,8 @@ import { CustomNetworkAlert } from '../components/custom/alert';
 import RetroSendingPopup from '../components/components/widgets/RetroSendingPopup.jsx';
 
 const TransactionDetailsInput = lazy(() => import('../components/modals/TransactionDetails'));
-const GasDetailsOutput       = lazy(() => import('../components/modals/GasDetails'));
-const ErrorDetails           = lazy(() => import('../components/modals/ErrorDetails'));
+const GasDetailsOutput = lazy(() => import('../components/modals/GasDetails'));
+const ErrorDetails = lazy(() => import('../components/modals/ErrorDetails'));
 
 const Body = () => {
   const {
@@ -20,19 +24,21 @@ const Body = () => {
     account,
     client,
     toAddress,
-    valueInWei,
     data,
+    valueInWei,
     userGasLimit,
+    sendTransactionAsync,
   } = useTransaction();
 
   const [validationPassed, setValidationPassed] = useState(false);
-  const [errorDetails,     setErrorDetails]     = useState(null);
-  const [txType,           setTxType]           = useState('legacy');
+  const [errorDetails, setErrorDetails] = useState(null);
+  const [txType, setTxType] = useState('legacy');
+  const [txRequestData, setTxRequestData] = useState(null);
 
-  // ✨ New popup state
-  const [popupOpen,   setPopupOpen]   = useState(false);
-  const [popupStatus, setPopupStatus] = useState("sending"); // "sending" | "success" | "error"
-  const [txHash,      setTxHash]      = useState(null);
+  // Popup state
+  const [popupOpen, setPopupOpen] = useState(false);
+  const [popupStatus, setPopupStatus] = useState('sending'); // "sending" | "success" | "error"
+  const [txHash, setTxHash] = useState(null);
 
   const { status: gasEstimationStatus } = useSelector((state) => state.gasEstimation);
 
@@ -43,52 +49,71 @@ const Body = () => {
         errorCode: '501',
         errorMessage: 'Invalid transaction details.',
       });
+      setValidationPassed(false);
       return;
     }
     setErrorDetails(null);
     setValidationPassed(true);
   };
 
-  const { data: txRequestData } = usePrepareTransactionRequest({
+  const { data: txData, error: txError } = usePrepareTransactionRequest({
     to: toAddress,
-    value: valueInWei ? parseEther(valueInWei.toString()) : undefined,
+    value: valueInWei ? parseUnits(valueInWei.toString()) : undefined,
     data,
     gas: userGasLimit ? BigInt(userGasLimit) : undefined,
+    enabled: validationPassed,
   });
 
-  const { sendTransactionAsync } = useSendTransaction();
+  const { data: networkFeeData } = useEstimateFeesPerGas({
+    chainId: client?.chain?.id,
+    txType: txType,
+  });
+
+  useEffect(() => {
+    if (txError) {
+      console.error('Transaction preparation failed:', txError);
+      setErrorDetails({
+        errorCode: '503',
+        errorMessage: 'Failed to prepare transaction request.',
+      });
+      setTxRequestData(null);
+    }
+    if (txData) {
+      setTxRequestData(txData);
+    }
+  }, [txData, txError]);
 
   const handleSendTransaction = async () => {
     try {
-      // ✨ show popup & set status "sending"
+      if (!txRequestData) {
+        setErrorDetails({
+          errorCode: '504',
+          errorMessage: 'No transaction request data available.',
+        });
+        return;
+      }
+
       setPopupOpen(true);
-      setPopupStatus("sending");
+      setPopupStatus('sending');
       setTxHash(null);
 
       const result = await sendTransactionAsync(txRequestData);
-      // wagmi v1 returns { hash } – adjust if you’re on a different version
-      setTxHash(result?.hash || result); 
-      setPopupStatus("success");
-
-      // optional: auto-close after 2s
-      // setTimeout(() => setPopupOpen(false), 2000);
+      setTxHash(result?.hash || result);
+      setPopupStatus('success');
     } catch (error) {
-      console.error('Failed to send transaction:', error);
+      console.error('Transaction failed:', error);
+      setPopupStatus('error');
       setErrorDetails({
         errorCode: '502',
         errorMessage: 'Transaction failed to send.',
       });
-      setPopupStatus("error");
-      setPopupOpen(true); // make sure it’s open to show error
     }
-    // ✨ DO NOT close in finally – we want the user to see success/error
   };
 
-  const isAccountConnected = account.status === 'connected';
+  const isAccountConnected = account?.status === 'connected';
 
   return (
     <div className="min-h-screen w-full px-4 py-12">
-      {/* ✨ popup render with props */}
       {popupOpen && (
         <RetroSendingPopup
           status={popupStatus}
@@ -98,8 +123,7 @@ const Body = () => {
       )}
 
       <div className="w-full max-w-full space-y-4">
-
-        {/* Network alert card */}
+        {/* Alert */}
         <div className="bg-black bg-opacity-25 p-4 rounded-lg shadow-md">
           <CustomNetworkAlert
             chainId={client?.chain?.id}
@@ -109,27 +133,23 @@ const Body = () => {
           />
         </div>
 
-        {/* Transaction details card */}
+        {/* Transaction input */}
         <div className="bg-black bg-opacity-25 p-4 rounded-lg shadow-md">
           <Suspense fallback={<div className="text-xs text-white font-mono">Loading transaction details...</div>}>
             <TransactionDetailsInput />
           </Suspense>
-
-          {/* Buttons bar */}
           <div className="mt-4 flex flex-col sm:flex-row gap-3 w-full">
-             <ValidateButton shouldBeActive={isAccountConnected} onClick={handleValidate} className="flex-1 text-customOlive" /> 
-             <OverrideButton shouldBeActive={isAccountConnected} onClick={handleValidate} className="flex-1 text-customOlive" /> 
-             </div>
+            <ValidateButton shouldBeActive={isAccountConnected} onClick={handleValidate} className="flex-1 text-customOlive" />
+            <OverrideButton shouldBeActive={isAccountConnected} onClick={handleValidate} className="flex-1 text-customOlive" />
+          </div>
         </div>
 
-        {/* Gas / error sections */}
+        {/* Conditional gas or error */}
         {validationPassed ? (
           <div className="bg-black bg-opacity-25 p-4 rounded-lg shadow-md">
             <Suspense fallback={<div className="text-xs text-white font-mono">Loading gas details...</div>}>
-              <GasDetailsOutput txType={txType} />
+              <GasDetailsOutput txType={txType} networkFeeData={networkFeeData} />
             </Suspense>
-
-            {/* Send button */}
             <div className="mt-4 flex justify-center">
               <div className="w-full sm:w-auto sm:min-w-[220px]">
                 <SendToNetworkButton

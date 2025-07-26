@@ -395,7 +395,7 @@ const GasDetailsOutput = ({ txType }) => {
   );
 };
 
-// ─────────────────────────── Helpers ───────────────────────────
+
 function clamp(v) {
   return Math.max(MIN_GAS, Math.min(v, MAX_GAS));
 }
