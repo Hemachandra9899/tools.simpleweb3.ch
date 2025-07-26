@@ -23,6 +23,7 @@ const Home = () => {
       <div className='fixed top-0 left-0 right-0 z-50'>
         <Header />
       </div>
+      {/* <div className="pt-[100px] md:pt-[100px]"></div> */}
 
       {/* Main Content Area */}
       <div className="min-h-screen bg-[Black] bg-cover bg-center">

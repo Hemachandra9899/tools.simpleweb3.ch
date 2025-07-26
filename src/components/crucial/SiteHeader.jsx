@@ -1,6 +1,7 @@
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { NavLink } from 'react-router-dom';
 // import { ConnectBtn } from '../web3/web3.connect';
+import { Button } from "pixel-retroui";
 
 const Header = () => {
   const linkClass = ({ isActive }) =>
@@ -14,29 +15,57 @@ const Header = () => {
         <div className='flex h-12 items-center justify-between'>
           {/* Logo */}
           <div className='flex-shrink-0'>
-          <NavLink to="/" className="flex items-center space-x-2">
-  <img className="h-11 w-auto flicker" src="/logo/mdi_cube-outline.svg" alt="SimpleWeb3 Logo" />
-  <p className="[font-family:Jersey_10,Helvetica] text-[#fffcfc] text-xl tracking-wide leading-normal whitespace-nowrap">
-    SimpleWeb3
+          <header className="fixed top-0 left-0 w-full px-4 sm:px-8 md:px-16 py-4 flex justify-between items-center bg-black z-50">
+          <NavLink to="/" className="flex items-center gap-0 sm:gap-2 cursor-pointer">
+  <img
+    className="h-10 w-auto flicker"
+    src="/logo/mdi_cube-outline.svg"
+    alt="SimpleWeb3 Logo"
+  />
+  {/* Show the name only ≥ sm */}
+  <p className="hidden sm:block font-[Jersey_10] text-[#fffcfc] text-base sm:text-lg md:text-xl tracking-wide whitespace-nowrap">
+    Simple<span className="text-[#00FE77]">Web3</span>
   </p>
 </NavLink>
-          </div>
 
-          {/* NavLinks */}
-          <div className='hidden md:flex flex-grow justify-center'>
-            <div className='space-x-4'>
-              <NavLink to='/' >
-                Home
-              </NavLink>
-              <NavLink to='/about' >
-                About
-              </NavLink>
-            </div>
+  {/* Mobile Menu Button */}
+  <div className="sm:hidden">
+  <button className="font-[Jersey_10] text-[#fffcfc]  cursor-pointer"><ConnectButton /></button>
+  </div>
+
+  {/* Desktop Menu (show only on sm and above) */}
+  <div className="hidden sm:block">
+  <button className="font-[Jersey_10] text-[#fffcfc]  cursor-pointer"><ConnectButton /></button>
+  </div>
+</header>
+
+            
           </div>
+          {/* <div className="fixed top-[64px] md:top-[72px] left-0 w-full z-40 bg-black border-b-2 border-white">
+              <div className="px-4 sm:px-8 md:px-16 py-4 flex overflow-x-auto gap-4">
+                {["Home", "Transaction Sending", "Sign In", "Verify", "Read"].map((label) => (
+                  <Button
+                    key={label}
+                    bg="black"
+                    textColor="white"
+                    borderColor="white"
+                    shadow="white"
+                    padding="px-6 py-3"
+                    className="pixel-button text-sm whitespace-nowrap"
+                    
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            </div> */}
+            
+
 
           {/* ConnectButton */}
           <div className='flex-shrink md:flex-shrink-0'>
-            <ConnectButton />
+         
+            
           </div>
         </div>
       </div>

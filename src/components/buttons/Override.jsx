@@ -1,4 +1,4 @@
-// ValidateButton.jsx
+// OverrideButton.jsx
 import React from "react";
 
 const base =
@@ -7,7 +7,7 @@ const active =
   "bg-[#00FE77] hover:bg-[#c1ef00] active:translate-x-[2px] active:translate-y-[2px] active:shadow-[2px_2px_0_#fffcfc]";
 const disabled = "bg-gray-300 cursor-not-allowed opacity-70";
 
-export default function ValidateButton({ shouldBeActive, onClick, className = "" }) {
+export default function OverrideButton({ shouldBeActive, onClick, className = "" }) {
   return (
     <button
       type="button"
@@ -16,7 +16,7 @@ export default function ValidateButton({ shouldBeActive, onClick, className = ""
       className={`${base} ${shouldBeActive ? active : disabled} ${className}`}
       style={{ imageRendering: "pixelated" }}
     >
-      Validate
+      Override
     </button>
   );
 }

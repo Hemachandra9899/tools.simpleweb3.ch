@@ -26,7 +26,7 @@ export const CustomNetworkAlert = ({ chainId, address, txType, setTxType }) => {
         }}
       >
         <AlertTitle className="text-black text-xs">Address In Use:</AlertTitle>
-        <AddressSpan className="text-xs">{address}</AddressSpan>
+        <AddressSpan className="text-xs text-black">{address}</AddressSpan>
 
         <div className="mt-4">
           <h3 className="mb-4 text-xs font-bold text-black uppercase">Transaction Type</h3>
