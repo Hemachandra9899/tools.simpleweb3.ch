@@ -118,7 +118,7 @@ const GasDetailsOutput = ({ txType }) => {
   const priorityDecTimer = useRef(null);
   const debounceTimer = useRef(null);
 
-  // ── Debounce re-estimates by 3s after any relevant input change
+  // ── Debounce re-estimates by 3s after any relevant input change the 
   useEffect(() => {
     if (!(isTxInputValid && client && account?.address)) return;
     setDebouncing(true);
