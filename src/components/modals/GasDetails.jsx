@@ -228,10 +228,10 @@ const GasDetailsOutput = ({ txType }) => {
         style={{ imageRendering: "pixelated" }}
       >
         {/* corners */}
-        <div className="absolute top-0 left-0 w-2 h-2 bg-black" />
-        <div className="absolute top-0 right-0 w-2 h-2 bg-black" />
-        <div className="absolute bottom-0 left-0 w-2 h-2 bg-black" />
-        <div className="absolute bottom-0 right-0 w-2 h-2 bg-black" />
+        <div className="absolute top-0 left-0 w-2 h-2 bg-black flicker " />
+        <div className="absolute top-0 right-0 w-2 h-2 bg-black flicker" />
+        <div className="absolute bottom-0 left-0 w-2 h-2 bg-black flicker " />
+        <div className="absolute bottom-0 right-0 w-2 h-2 bg-black flicker" />
 
         {/* Heading */}
         <h2 className="text-sm sm:text-base font-['Press_Start_2P'] mb-4">GAS LAB</h2>
