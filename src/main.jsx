@@ -8,6 +8,7 @@ import { WagmiProvider } from 'wagmi';
 import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit';
 import ErrorBoundary from './components/ErrorBoundary';
 import { SolanaWalletContext } from './web3/SolanaWalletProvider.jsx';
+import { BitcoinWalletProvider } from './web3/BitcoinWalletProvider.jsx'; // ✅ add this
 import gasEstimationReducer from './reducer/gasEstimation';
 import { config } from './web3/wagmi';
 import router from './router.jsx';
@@ -39,9 +40,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             })}
           >
             <SolanaWalletContext>
-              <Provider store={store}>
-                <RouterProvider router={router} />
-              </Provider>
+              <BitcoinWalletProvider> {/* ✅ wrap your app with BTC provider */}
+                <Provider store={store}>
+                  <RouterProvider router={router} />
+                </Provider>
+              </BitcoinWalletProvider>
             </SolanaWalletContext>
           </RainbowKitProvider>
         </WagmiProvider>
