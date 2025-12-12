@@ -3,6 +3,7 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import bs58 from 'bs58';
 import axios from 'axios';
+import toast from 'react-hot-toast';
 
 export default function SolanaConnectButton() {
   const { publicKey, connected, signMessage } = useWallet();
@@ -42,13 +43,21 @@ export default function SolanaConnectButton() {
 
         if (verifyRes.data.success) console.log('✅ Solana wallet verified!');
         else console.error('❌ Verification failed:', verifyRes.data);
+        toast.success(`Solana connected: ${address}`);
       } catch (err) {
         console.error('⚠️ Verification error:', err);
+        toast.error('Solana verification error');
       }
     }
 
     verifyWallet();
   }, [connected, publicKey, signMessage]);
+
+  useEffect(() => {
+    if (!connected) {
+      toast('Solana disconnected');
+    }
+  }, [connected]);
 
   return (
     <div className="flex justify-center">

@@ -3,6 +3,8 @@ import { motion } from 'framer-motion';
 import { useSelector } from 'react-redux';
 import { usePrepareTransactionRequest, useEstimateFeesPerGas } from 'wagmi';
 import { parseUnits, isAddress } from 'viem';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { useBitcoin } from '../web3/BitcoinWalletProvider';
 import SharedHeader from '../components/crucial/SharedHeader';
 import Footer from '../components/crucial/SiteFooter';
 import { TransactionProvider } from '../context/TransactionContext';
@@ -38,6 +40,17 @@ const SendTransactionContent = () => {
     userGasLimit,
     sendTransactionAsync,
   } = useTransaction();
+
+  // Get Solana wallet info if connected
+  const { connected: solConnected, publicKey } = useWallet();
+  const solanaAddress = solConnected && publicKey ? publicKey.toBase58() : null;
+
+  // Bitcoin wallet (if connected)
+  const btc = useBitcoin();
+  const bitcoinAddress = btc?.connected ? btc?.address : null;
+
+  // Use Solana address if available, otherwise Bitcoin address, otherwise EVM address
+  const displayAddress = solanaAddress || bitcoinAddress || account?.address;
 
   // State management
   const [validationPassed, setValidationPassed] = useState(false);
@@ -274,7 +287,7 @@ const SendTransactionContent = () => {
         <div className="bg-black bg-opacity-25 p-4 rounded-lg shadow-md">
           <CustomNetworkAlert
             chainId={client?.chain?.id}
-            address={account?.address}
+            address={displayAddress}
             txType={txType}
             setTxType={setTxType}
           />
