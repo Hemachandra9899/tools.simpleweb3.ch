@@ -1,9 +1,9 @@
-import React, { useEffect, useState, lazy, Suspense, useCallback, useMemo } from 'react';
+import { useEffect, useState, lazy, Suspense, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useSelector } from 'react-redux';
 import { usePrepareTransactionRequest, useEstimateFeesPerGas } from 'wagmi';
 import { parseUnits, isAddress } from 'viem';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { useBitcoin } from '../web3/BitcoinWalletProvider';
 import SharedHeader from '../components/crucial/SharedHeader';
 import Footer from '../components/crucial/SiteFooter';
@@ -15,7 +15,8 @@ import { CustomNetworkAlert } from '../components/custom/alert';
 import ValidateButton from '../components/buttons/ValidateButton';
 import OverrideButton from '../components/buttons/Override';
 import SendToNetworkButton from '../components/buttons/SendToNetworkButton';
-import SolanaTransactionForm from '../components/modals/SolanaTransactionForm';
+import { sendSolTransfer } from '../utils/solanaTransaction';
+import { sendBitcoinTransaction } from '../utils/bitcoinTransaction';
 
 // Lazy load components with error boundaries
 const TransactionDetailsInput = lazy(() => import('../components/modals/TransactionDetails'));
@@ -23,6 +24,7 @@ const GasDetailsOutput = lazy(() => import('../components/modals/GasDetails'));
 const ErrorDetails = lazy(() => import('../components/modals/ErrorDetails'));
 
 // Loading fallback component
+/* eslint-disable-next-line react/prop-types */
 const LoadingFallback = ({ message }) => (
   <div className="text-xs text-white font-mono p-4 bg-gray-800 rounded">
     {message}
@@ -43,7 +45,8 @@ const SendTransactionContent = () => {
   } = useTransaction();
 
   // Get Solana wallet info if connected
-  const { connected: solConnected, publicKey } = useWallet();
+  const { connected: solConnected, publicKey, signTransaction, sendTransaction } = useWallet();
+  const { connection } = useConnection();
   const solanaAddress = solConnected && publicKey ? publicKey.toBase58() : null;
 
   // Bitcoin wallet (if connected)
@@ -179,57 +182,119 @@ const SendTransactionContent = () => {
     }
   }, [feeError]);
 
-  // Enhanced transaction sender
+  // Enhanced transaction sender — unified for EVM, Solana, Bitcoin
   const handleSendTransaction = useCallback(async () => {
     if (isSending) return;
 
+    setErrorDetails(null);
+
     try {
-      // Pre-flight checks (EVM send requires EVM wallet)
-      if (!isEvmConnected) {
-        setErrorDetails({ errorCode: '400', errorMessage: 'EVM wallet not connected. Please connect an EVM wallet.' });
+      // EVM flow
+      if (isEvmConnected) {
+        if (!txRequestData) {
+          setErrorDetails({ errorCode: '504', errorMessage: 'No transaction request data available. Please validate first.' });
+          return;
+        }
+        if (!sendTransactionAsync) {
+          setErrorDetails({ errorCode: '505', errorMessage: 'Transaction function not available. Please refresh and try again.' });
+          return;
+        }
+
+        setIsSending(true);
+        setPopupOpen(true);
+        setPopupStatus('sending');
+        setTxHash(null);
+
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Transaction timeout')), 60000));
+        const result = await Promise.race([sendTransactionAsync(txRequestData), timeoutPromise]);
+        const hash = result?.hash || result;
+        if (hash) {
+          setTxHash(hash);
+          setPopupStatus('success');
+        } else throw new Error('No transaction hash received');
+
         return;
       }
 
-      if (!txRequestData) {
-        setErrorDetails({
-          errorCode: '504',
-          errorMessage: 'No transaction request data available. Please validate first.',
-        });
-        return;
-      }
+      // Solana flow
+      if (solConnected) {
+        if (!publicKey) {
+          setErrorDetails({ errorCode: '400', errorMessage: 'Solana wallet not connected.' });
+          return;
+        }
 
-      if (!sendTransactionAsync) {
-        setErrorDetails({
-          errorCode: '505',
-          errorMessage: 'Transaction function not available. Please refresh and try again.',
-        });
-        return;
-      }
+        // Use same `toAddress` and `valueInWei` fields (valueInWei treated as SOL)
+        const { PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } = await import('@solana/web3.js');
+        let to;
+        try {
+          to = new PublicKey(toAddress);
+        } catch {
+          setErrorDetails({ errorCode: '502', errorMessage: 'Invalid Solana recipient address.' });
+          return;
+        }
 
-      setIsSending(true);
-      setPopupOpen(true);
-      setPopupStatus('sending');
-      setTxHash(null);
-      setErrorDetails(null);
+        const amountSol = Number(valueInWei);
+        if (!amountSol || amountSol <= 0) {
+          setErrorDetails({ errorCode: '503', errorMessage: 'Invalid SOL amount.' });
+          return;
+        }
 
-      // Send transaction with timeout
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Transaction timeout')), 60000)
-      );
+        setIsSending(true);
+        setPopupOpen(true);
+        setPopupStatus('sending');
+        setTxHash(null);
 
-      const result = await Promise.race([
-        sendTransactionAsync(txRequestData),
-        timeoutPromise
-      ]);
+        let sig;
+        if (typeof sendTransaction === 'function') {
+          const tx = new Transaction().add(
+            SystemProgram.transfer({ fromPubkey: publicKey, toPubkey: to, lamports: Math.round(amountSol * LAMPORTS_PER_SOL) })
+          );
+          sig = await sendTransaction(tx, connection);
+          await connection.confirmTransaction(sig);
+        } else if (typeof signTransaction === 'function') {
+          sig = await sendSolTransfer({ connection, fromPubkey: publicKey, signTransaction, to, amountSol });
+        } else {
+          throw new Error('Solana wallet does not support sending transactions');
+        }
 
-      const hash = result?.hash || result;
-      if (hash) {
-        setTxHash(hash);
+        setTxHash(sig);
         setPopupStatus('success');
-      } else {
-        throw new Error('No transaction hash received');
+
+        return;
       }
 
+      // Bitcoin flow
+      if (btc?.connected) {
+        if (!btc.address) {
+          setErrorDetails({ errorCode: '400', errorMessage: 'Bitcoin wallet not connected.' });
+          return;
+        }
+
+        if (!toAddress || !toAddress.trim()) {
+          setErrorDetails({ errorCode: '502', errorMessage: 'Invalid Bitcoin recipient address.' });
+          return;
+        }
+
+        const amountBtc = Number(valueInWei);
+        if (!amountBtc || amountBtc <= 0) {
+          setErrorDetails({ errorCode: '503', errorMessage: 'Invalid BTC amount.' });
+          return;
+        }
+
+        setIsSending(true);
+        setPopupOpen(true);
+        setPopupStatus('sending');
+        setTxHash(null);
+
+        const network = btc?.network || (toAddress.startsWith('tb1') || toAddress.startsWith('m') || toAddress.startsWith('n') ? 'testnet' : 'mainnet');
+        const txId = await sendBitcoinTransaction({ btcProvider: btc.provider, fromAddress: btc.address, toAddress, amountBTC: amountBtc, network });
+        setTxHash(txId);
+        setPopupStatus('success');
+
+        return;
+      }
+
+      setErrorDetails({ errorCode: '400', errorMessage: 'No supported wallet connected. Connect an EVM, Solana, or Bitcoin wallet.' });
     } catch (error) {
       console.error('Transaction failed:', error);
       setPopupStatus('error');
@@ -245,14 +310,24 @@ const SendTransactionContent = () => {
         errorMessage = `Transaction failed: ${error.message}`;
       }
 
-      setErrorDetails({
-        errorCode: '502',
-        errorMessage,
-      });
+      setErrorDetails({ errorCode: '502', errorMessage });
     } finally {
       setIsSending(false);
     }
-  }, [isSending, isEvmConnected, txRequestData, sendTransactionAsync]);
+  }, [
+    isSending,
+    isEvmConnected,
+    txRequestData,
+    sendTransactionAsync,
+    solConnected,
+    publicKey,
+    signTransaction,
+    sendTransaction,
+    connection,
+    btc,
+    toAddress,
+    valueInWei,
+  ]);
 
   // Close popup handler
   const handleClosePopup = useCallback(() => {
@@ -282,6 +357,8 @@ const SendTransactionContent = () => {
             setTxType={setTxType}
           />
         </div>
+
+        {/* Single unified transaction UI is used below (TransactionDetails) */}
 
         {/* Sidebar Overlay */}
         {sidebarOpen && (
