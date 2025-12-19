@@ -15,6 +15,7 @@ import { CustomNetworkAlert } from '../components/custom/alert';
 import ValidateButton from '../components/buttons/ValidateButton';
 import OverrideButton from '../components/buttons/Override';
 import SendToNetworkButton from '../components/buttons/SendToNetworkButton';
+import SolanaTransactionForm from '../components/modals/SolanaTransactionForm';
 
 // Lazy load components with error boundaries
 const TransactionDetailsInput = lazy(() => import('../components/modals/TransactionDetails'));
@@ -52,6 +53,8 @@ const SendTransactionContent = () => {
   // Use Solana address if available, otherwise Bitcoin address, otherwise EVM address
   const displayAddress = solanaAddress || bitcoinAddress || account?.address;
 
+  // We'll render Solana form inline alongside EVM flow so both flows share the same UI
+
   // State management
   const [validationPassed, setValidationPassed] = useState(false);
   const [errorDetails, setErrorDetails] = useState(null);
@@ -78,10 +81,9 @@ const SendTransactionContent = () => {
     }
   });
 
-  // Memoized validation check
-  const isAccountConnected = useMemo(() => {
-    return account?.status === 'connected' && account?.address;
-  }, [account?.status, account?.address]);
+  // Connection flags: EVM-only and any-wallet
+  const isEvmConnected = useMemo(() => account?.status === 'connected' && !!account?.address, [account?.status, account?.address]);
+  const isAnyConnected = Boolean(isEvmConnected || solConnected || (btc && btc.connected));
 
   // Enhanced validation handler
   const handleValidate = useCallback(async () => {
@@ -91,44 +93,35 @@ const SendTransactionContent = () => {
     setErrorDetails(null);
 
     try {
-      // Check wallet connection first
-      if (!isAccountConnected) {
-        setErrorDetails({
-          errorCode: '400',
-          errorMessage: 'Please connect your wallet first.',
-        });
+      // Require at least one connected wallet (EVM, Solana, or BTC)
+      if (!isAnyConnected) {
+        setErrorDetails({ errorCode: '400', errorMessage: 'Please connect your wallet first.' });
         setValidationPassed(false);
         return;
       }
 
-      // Validate inputs
-      const isValid = validateInputs();
-      if (!isValid) {
-        setErrorDetails({
-          errorCode: '501',
-          errorMessage: 'Invalid transaction details. Please check the recipient address and data format.',
-        });
-        setValidationPassed(false);
-        return;
-      }
+      // EVM-specific validation only when EVM wallet is connected
+      if (isEvmConnected) {
+        // Validate inputs
+        const isValid = validateInputs();
+        if (!isValid) {
+          setErrorDetails({ errorCode: '501', errorMessage: 'Invalid transaction details. Please check the recipient address and data format.' });
+          setValidationPassed(false);
+          return;
+        }
 
-      // Additional validation checks
-      if (toAddress && !isAddress(toAddress)) {
-        setErrorDetails({
-          errorCode: '502',
-          errorMessage: 'Invalid recipient address format.',
-        });
-        setValidationPassed(false);
-        return;
-      }
+        // Additional validation checks for EVM
+        if (toAddress && !isAddress(toAddress)) {
+          setErrorDetails({ errorCode: '502', errorMessage: 'Invalid recipient address format.' });
+          setValidationPassed(false);
+          return;
+        }
 
-      if (data && data !== '0x' && !/^0x[a-fA-F0-9]*$/.test(data)) {
-        setErrorDetails({
-          errorCode: '503',
-          errorMessage: 'Invalid data format. Must be valid hexadecimal.',
-        });
-        setValidationPassed(false);
-        return;
+        if (data && data !== '0x' && !/^0x[a-fA-F0-9]*$/.test(data)) {
+          setErrorDetails({ errorCode: '503', errorMessage: 'Invalid data format. Must be valid hexadecimal.' });
+          setValidationPassed(false);
+          return;
+        }
       }
 
       setValidationPassed(true);
@@ -142,7 +135,7 @@ const SendTransactionContent = () => {
     } finally {
       setIsValidating(false);
     }
-  }, [isValidating, isAccountConnected, validateInputs, toAddress, data]);
+  }, [isValidating, isEvmConnected, isAnyConnected, validateInputs, toAddress, data]);
 
   // Prepare transaction with proper error handling
   const { data: txData, error: txError, isLoading: isPreparing } = usePrepareTransactionRequest({
@@ -150,7 +143,7 @@ const SendTransactionContent = () => {
     value: valueInWei ? parseUnits(valueInWei.toString(), 'wei') : undefined,
     data: data || '0x',
     gas: userGasLimit ? BigInt(userGasLimit) : undefined,
-    enabled: validationPassed && isAccountConnected && !!toAddress,
+    enabled: validationPassed && isEvmConnected && !!toAddress,
     retry: 3,
     retryDelay: 1000,
   });
@@ -191,12 +184,9 @@ const SendTransactionContent = () => {
     if (isSending) return;
 
     try {
-      // Pre-flight checks
-      if (!isAccountConnected) {
-        setErrorDetails({
-          errorCode: '400',
-          errorMessage: 'Wallet not connected. Please connect your wallet.',
-        });
+      // Pre-flight checks (EVM send requires EVM wallet)
+      if (!isEvmConnected) {
+        setErrorDetails({ errorCode: '400', errorMessage: 'EVM wallet not connected. Please connect an EVM wallet.' });
         return;
       }
 
@@ -262,7 +252,7 @@ const SendTransactionContent = () => {
     } finally {
       setIsSending(false);
     }
-  }, [isSending, isAccountConnected, txRequestData, sendTransactionAsync]);
+  }, [isSending, isEvmConnected, txRequestData, sendTransactionAsync]);
 
   // Close popup handler
   const handleClosePopup = useCallback(() => {
@@ -354,19 +344,19 @@ const SendTransactionContent = () => {
 
           <div className="mt-4 flex flex-col sm:flex-row gap-3 w-full">
             <ValidateButton
-              shouldBeActive={isAccountConnected && !isValidating}
+              shouldBeActive={isAnyConnected && !isValidating}
               onClick={handleValidate}
               className="flex-1 text-customOlive"
-              disabled={isValidating || !isAccountConnected}
+              disabled={isValidating || !isAnyConnected}
             >
               {isValidating ? 'Validating...' : 'Validate Transaction'}
             </ValidateButton>
 
             <OverrideButton
-              shouldBeActive={isAccountConnected && !isValidating}
+              shouldBeActive={isAnyConnected && !isValidating}
               onClick={handleValidate}
               className="flex-1 text-customOlive"
-              disabled={isValidating || !isAccountConnected}
+              disabled={isValidating || !isAnyConnected}
             />
           </div>
 
@@ -408,14 +398,14 @@ const SendTransactionContent = () => {
                     !!txRequestData &&
                     !isPreparing &&
                     !isSending &&
-                    isAccountConnected
+                    isEvmConnected
                   }
                   onClick={handleSendTransaction}
                   disabled={
                     !txRequestData ||
                     isPreparing ||
                     isSending ||
-                    !isAccountConnected ||
+                    !isEvmConnected ||
                     gasEstimationStatus === 'error'
                   }
                   loading={isSending}
@@ -426,7 +416,7 @@ const SendTransactionContent = () => {
             </div>
 
             {/* Additional Status Messages */}
-            {!isAccountConnected && (
+            {!isAnyConnected && (
               <div className="mt-2 text-center">
                 <span className="text-red-400 font-['Press_Start_2P'] text-xs">
                   Please connect your wallet to continue
@@ -477,12 +467,12 @@ const SendTransactionContent = () => {
         <div className="fixed bottom-4 left-4 z-30">
           <div className={`
             px-3 py-2 rounded-lg font-['Press_Start_2P'] text-xs
-            ${isAccountConnected
+            ${isAnyConnected
               ? 'bg-green-600 text-white'
               : 'bg-red-600 text-white'
             }
           `}>
-            {isAccountConnected ? '🟢 Connected' : '🔴 Disconnected'}
+            {isAnyConnected ? '🟢 Connected' : '🔴 Disconnected'}
           </div>
         </div>
       </div>
